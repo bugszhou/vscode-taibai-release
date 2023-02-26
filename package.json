@@ -7,6 +7,10 @@
   "engines": {
     "vscode": "^1.60.0"
   },
+  "repository": {
+    "url": "https://github.com/bugszhou/vscode-taibai-release",
+    "type": "git"
+  },
   "categories": [
     "Other"
   ],

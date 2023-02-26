@@ -14,7 +14,18 @@ const {
   showErrorMessage,
   createWebviewPanel,
   createTerminal,
+  withProgress,
 } = vscode.window;
+
+let terminal: ReturnType<typeof createTerminal> = null as any;
+
+vscode.window.onDidCloseTerminal((e) => {
+  if (e?.name === "release") {
+    showInformationMessage("发版编译结束", {
+      modal: true,
+    });
+  }
+});
 
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
@@ -42,15 +53,16 @@ export function activate(context: vscode.ExtensionContext) {
 
       releaseView.webview.html = getHtml(packageJSON?.version);
 
-      const terminal = createTerminal("release");
-
       releaseView.webview.onDidReceiveMessage(
         (message) => {
-          console.log(message);
           switch (message.status) {
             case "fail":
               showErrorMessage(message.msg);
               return;
+          }
+
+          if (!terminal) {
+            terminal = createTerminal("release");
           }
 
           let records: string[] = (message?.records ?? "")
@@ -75,14 +87,18 @@ export function activate(context: vscode.ExtensionContext) {
           terminal.sendText(`npm version ${version}`);
 
           const releaseScript = /(\-testing)$/.test(version)
-            ? "npm run testing"
-            : message?.scriptText;
+            ? "npm run testing && exit"
+            : `${message?.scriptText} && exit 0`;
 
           terminal.sendText(releaseScript);
-          terminal.dispose();
 
-          writeFileSync(join(rootPath, "release.md"), html2md(originalMd));
-          showInformationMessage("发版编译成功");
+          showInformationMessage("正在发版编译...", {
+            modal: true,
+          });
+
+          if (!originalMd.includes(version)) {
+            writeFileSync(join(rootPath, "release.md"), html2md(originalMd));
+          }
           releaseView.dispose();
         },
         undefined,
@@ -95,7 +111,9 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 // this method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate() {
+  console.log(999);
+}
 
 function writeReleaseMD(
   originalMd: string,
