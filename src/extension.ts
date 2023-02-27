@@ -95,6 +95,7 @@ export function activate(context: vscode.ExtensionContext) {
           showInformationMessage("正在发版编译...", {
             modal: true,
           });
+          terminal.show();
 
           if (!originalMd.includes(version)) {
             writeFileSync(join(rootPath, "release.md"), html2md(originalMd));

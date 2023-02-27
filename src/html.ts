@@ -44,7 +44,7 @@ export function getHtml(version = "") {
         }
         .release__current {
           font-weight: bold;
-          color: blue;
+          color: rgb(19, 151, 61);
         }
         .release__version {
           min-width: 350px;
