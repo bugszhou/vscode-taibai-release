@@ -135,7 +135,7 @@ function writeReleaseMD(
     1,
     0,
     `<h2>v${version}</h2>\n`,
-    `<p><strong>发版时间：${dateFormat(Date.now(), "yyyy-MM-dd hh-mm-ss")}</strong></p>`,
+    `<p><strong>发版时间：${dateFormat(Date.now(), "yyyy-MM-dd hh:mm:ss")}</strong></p>`,
     ...listStr.split("\n"),
   );
 
