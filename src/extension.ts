@@ -84,10 +84,14 @@ export function activate(context: vscode.ExtensionContext) {
 
           const newMd = writeReleaseMD(originalMd, version, records);
 
+          if (!originalMd.includes(version)) {
+            writeFileSync(join(rootPath, "release.md"), html2md(newMd));
+          }
+
           terminal.sendText(`npm version ${version}`);
 
           const releaseScript = /(\-testing)$/.test(version)
-            ? "npm run testing && exit"
+            ? "npm run testing && exit 0"
             : `${message?.scriptText} && exit 0`;
 
           terminal.sendText(releaseScript);
@@ -96,10 +100,6 @@ export function activate(context: vscode.ExtensionContext) {
             modal: true,
           });
           terminal.show();
-
-          if (!originalMd.includes(version)) {
-            writeFileSync(join(rootPath, "release.md"), html2md(newMd));
-          }
           releaseView.dispose();
         },
         undefined,
