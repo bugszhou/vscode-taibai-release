@@ -2,7 +2,7 @@
   "name": "taibai-release",
   "displayName": "taibai-release",
   "description": "快速生成发版记录",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "publisher": "yiri",
   "engines": {
     "vscode": "^1.60.0"
