@@ -20,7 +20,7 @@ const {
 let terminal: ReturnType<typeof createTerminal> = null as any;
 
 vscode.window.onDidCloseTerminal((e) => {
-  if (e?.name === "release") {
+  if (e?.name === "release" && e?.exitStatus?.code === 0) {
     showInformationMessage("发版编译结束", {
       modal: true,
     });
@@ -33,6 +33,8 @@ export function activate(context: vscode.ExtensionContext) {
   let disposable = vscode.commands.registerCommand(
     "extension.release",
     async () => {
+      const allConfig = vscode.workspace.getConfiguration("taibai-release");
+
       const releaseView = createWebviewPanel(
         "release",
         "发版记录",
@@ -73,8 +75,7 @@ export function activate(context: vscode.ExtensionContext) {
           records = records.filter((item) => item);
           const version: string = (message?.version ?? "")
             .replace("\r\n", "\n")
-            .replace("\n\r", "\n")
-            .split("\n");
+            .replace("\n\r", "\n");
 
           const releaseMdPath = join(rootPath, "release.md");
           let originalMd = "# 发版记录\n\n";
@@ -90,9 +91,25 @@ export function activate(context: vscode.ExtensionContext) {
 
           terminal.sendText(`npm version ${version}`);
 
-          const releaseScript = /(\-testing)$/.test(version)
-            ? "npm run testing && exit 0"
-            : `${message?.scriptText} && exit 0`;
+          const releaseType = message?.isRelease ?? "no";
+
+          let releaseScript = /(\-testing)$/.test(version)
+            ? "npm run testing"
+            : `${message?.scriptText}`;
+
+          const cli: string = (allConfig.get("cli") as any)?.[releaseType];
+          const dist: string = (allConfig.get(`dist.${releaseType}`) as any)?.[
+            /(\-testing)$/.test(version) ? "testing" : "production"
+          ];
+
+          if (cli && dist) {
+            releaseScript = `${releaseScript} && ${cli} upload --project ${join(rootPath, dist)} --version ${version.replace(
+              "-testing",
+              "",
+            )} --desc \"${records.join("\n")}\"`;
+          }
+
+          releaseScript = `${releaseScript} && exit 0`;
 
           terminal.sendText(releaseScript);
 
@@ -135,7 +152,10 @@ function writeReleaseMD(
     1,
     0,
     `<h2>v${version}</h2>\n`,
-    `<p><strong>发版时间：${dateFormat(Date.now(), "yyyy-MM-dd hh:mm:ss")}</strong></p>`,
+    `<p><strong>发版时间：${dateFormat(
+      Date.now(),
+      "yyyy-MM-dd hh:mm:ss",
+    )}</strong></p>`,
     ...listStr.split("\n"),
   );
 

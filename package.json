@@ -32,6 +32,25 @@
           "group": "1_modification"
         }
       ]
+    },
+    "configuration": {
+      "type": "object",
+      "title": "发版配置",
+      "properties": {
+        "taibai-release.cli": {
+          "type": "object",
+          "default": {
+            "weapp": "/Applications/wechatwebdevtools.app/Contents/MacOS/cli"
+          }
+        },
+        "taibai-release.dist.weapp": {
+          "type": "object",
+          "default": {
+            "testing": "dist/testing/weapp",
+            "production": "dist/release/weapp"
+          }
+        }
+      }
     }
   },
   "scripts": {

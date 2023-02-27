@@ -1,14 +1,3 @@
-export const html = `<!DOCTYPE html>
-<html>
-  <head></head>
-  <body>
-    <div>当前版本号：</div>
-    <div>发布版本号：</div>
-    <div>发版说明：<textarea ></textarea></div>
-  </body>
-</html>
-`;
-
 export function getHtml(version = "") {
   return `<!DOCTYPE html>
   <html>
@@ -86,6 +75,10 @@ export function getHtml(version = "") {
         .release__radio-ipt {
           margin-right: 4px;
         }
+
+        .release__radio-input {
+          margin-right: 4px;
+        }
       </style>
     </head>
     <body>
@@ -111,6 +104,15 @@ export function getHtml(version = "") {
           </div>
           <div class="release__radio">
             <input class="release__radio-ipt" name="scriptText" onchange="handleRadioChange()" type="radio" value="npm run build" checked />生产环境
+          </div>
+        </div>
+        <div class="release__item" style="padding-left: 150px;">需要开启开发者工具的安全端口才能自动上传</div>
+        <div class="release__item release__radios">
+          <div class="release__radio">
+            <input class="release__radio-input release__is-release" name="isRelease" onchange="handleIsReleaseChange()" type="radio" value="weapp" checked />上传到微信小程序
+          </div>
+          <div class="release__radio">
+            <input class="release__radio-input release__is-release" name="isRelease" onchange="handleIsReleaseChange()" type="radio" value="no" />不上传
           </div>
         </div>
         <div class="release__footer">
@@ -142,6 +144,16 @@ export function getHtml(version = "") {
         });
         console.log(scriptText);
       }
+
+      let isRelease = "weapp";
+      function handleIsReleaseChange() {
+        const doms = document.querySelectorAll(".release__is-release");
+        doms.forEach((item) => {
+          if (item.checked) {
+            isRelease = item.value;
+          }
+        });
+      }
   
       function handleRelease() {
         if (!version) {
@@ -151,6 +163,7 @@ export function getHtml(version = "") {
             version,
             records,
             scriptText,
+            isRelease,
           });
           return;
         }
@@ -160,6 +173,7 @@ export function getHtml(version = "") {
           version,
           records,
           scriptText,
+          isRelease,
         });
       }
     </script>
