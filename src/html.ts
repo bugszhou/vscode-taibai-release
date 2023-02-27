@@ -65,6 +65,7 @@ export function getHtml(version = "") {
         }
   
         .release__footer {
+          width: 600px;
           padding-top: 30px;
           text-align: center;
         }
@@ -72,13 +73,14 @@ export function getHtml(version = "") {
         .release__radios {
           align-items: center;
           justify-content: center;
+          width: 600px;
         }
 
         .release__radio {
           display: flex;
           align-items: center;
           justify-content: flex-start;
-          margin-right: 10px;
+          margin-right: 20px;
         }
 
         .release__radio-ipt {

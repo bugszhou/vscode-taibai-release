@@ -82,7 +82,7 @@ export function activate(context: vscode.ExtensionContext) {
             originalMd = readFileSync(releaseMdPath, "utf8");
           }
 
-          originalMd = writeReleaseMD(originalMd, version, records);
+          const newMd = writeReleaseMD(originalMd, version, records);
 
           terminal.sendText(`npm version ${version}`);
 
@@ -98,7 +98,7 @@ export function activate(context: vscode.ExtensionContext) {
           terminal.show();
 
           if (!originalMd.includes(version)) {
-            writeFileSync(join(rootPath, "release.md"), html2md(originalMd));
+            writeFileSync(join(rootPath, "release.md"), html2md(newMd));
           }
           releaseView.dispose();
         },
@@ -112,9 +112,7 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 // this method is called when your extension is deactivated
-export function deactivate() {
-  console.log(999);
-}
+export function deactivate() {}
 
 function writeReleaseMD(
   originalMd: string,
@@ -135,7 +133,7 @@ function writeReleaseMD(
 
   mds.splice(1, 0, `<h2>v${version}</h2>`, ...listStr.split("\n"));
 
-  return mds.join("\n");
+  return mds.join("\n") + "\n";
 }
 
 function getListStr(content = "", index = 0) {
