@@ -6,6 +6,7 @@ import * as vscode from "vscode";
 import { getHtml } from "./html";
 import * as MarkdownIt from "markdown-it";
 import * as html2mdDefault from "html-to-md";
+import sleep from "./sleep";
 
 const html2md: any = html2mdDefault;
 
@@ -56,14 +57,14 @@ export function activate(context: vscode.ExtensionContext) {
       releaseView.webview.html = getHtml(packageJSON?.version);
 
       releaseView.webview.onDidReceiveMessage(
-        (message) => {
+        async (message) => {
           switch (message.status) {
             case "fail":
               showErrorMessage(message.msg);
               return;
           }
 
-          if (!terminal) {
+          if (!terminal || terminal?.exitStatus) {
             terminal = createTerminal("release");
           }
 
@@ -83,13 +84,18 @@ export function activate(context: vscode.ExtensionContext) {
             originalMd = readFileSync(releaseMdPath, "utf8");
           }
 
+          terminal.sendText(`npm version ${version}`);
+          terminal.show();
+
+          showInformationMessage("正在发版编译...", {
+            modal: true,
+          });
+
+          await sleep(2000);
+
           const newMd = writeReleaseMD(originalMd, version, records);
 
-          if (!originalMd.includes(version)) {
-            writeFileSync(join(rootPath, "release.md"), html2md(newMd));
-          }
-
-          terminal.sendText(`npm version ${version}`);
+          writeFileSync(join(rootPath, "release.md"), html2md(newMd));
 
           const releaseType = message?.isRelease ?? "no";
 
@@ -99,24 +105,26 @@ export function activate(context: vscode.ExtensionContext) {
 
           const cli: string = (allConfig.get("cli") as any)?.[releaseType];
           const dist: string = (allConfig.get(`dist.${releaseType}`) as any)?.[
-            /(\-testing)$/.test(version) ? "testing" : "production"
+            /(\-testing)$/.test(version) ||
+            releaseScript.includes("npm run testing")
+              ? "testing"
+              : "production"
           ];
 
           if (cli && dist) {
-            releaseScript = `${releaseScript} && ${cli} upload --project ${join(rootPath, dist)} --version ${version.replace(
+            releaseScript = `${releaseScript} && ${cli} upload --project ${join(
+              rootPath,
+              dist,
+            )} --version ${version.replace(
               "-testing",
               "",
             )} --desc \"${records.join("\n")}\"`;
           }
+          console.log(releaseScript);
 
           releaseScript = `${releaseScript} && exit 0`;
 
           terminal.sendText(releaseScript);
-
-          showInformationMessage("正在发版编译...", {
-            modal: true,
-          });
-          terminal.show();
           releaseView.dispose();
         },
         undefined,

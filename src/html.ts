@@ -97,13 +97,13 @@ export function getHtml(version = "") {
         </div>
         <div class="release__item release__radios">
           <div class="release__radio">
-            <input class="release__radio-ipt" name="scriptText" onchange="handleRadioChange()" type="radio" value="npm run testing" />测试环境
+            <input class="release__radio-ipt" name="scriptText" onchange="handleRadioChange()" type="radio" value="npm run testing" checked />测试环境
           </div>
           <div class="release__radio">
             <input class="release__radio-ipt" name="scriptText" onchange="handleRadioChange()" type="radio" value="npm run staging" />STG环境
           </div>
           <div class="release__radio">
-            <input class="release__radio-ipt" name="scriptText" onchange="handleRadioChange()" type="radio" value="npm run build" checked />生产环境
+            <input class="release__radio-ipt" name="scriptText" onchange="handleRadioChange()" type="radio" value="npm run build" />生产环境
           </div>
         </div>
         <div class="release__item" style="padding-left: 150px;">需要开启开发者工具的安全端口才能自动上传</div>
@@ -123,7 +123,7 @@ export function getHtml(version = "") {
     <script>
       const vscode = acquireVsCodeApi();
       let records = "";
-      let scriptText = "npm run build";
+      let scriptText = "npm run testing";
       function handleRecordInfo() {
         const dom = document.querySelector("#release__text-js");
         records = dom.value;
