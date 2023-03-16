@@ -78,13 +78,21 @@ export function activate(context: vscode.ExtensionContext) {
             .replace("\r\n", "\n")
             .replace("\n\r", "\n");
 
-          const releaseMdPath = join(rootPath, "release.md");
+            let releaseScript = /(\-testing)$/.test(version)
+              ? "npm run testing"
+              : `${message?.scriptText}`;
+  
+            const isTesting =
+              /(\-testing)$/.test(version) ||
+              releaseScript.includes("npm run testing");
+
+          const releaseMdPath = join(rootPath, `release${isTesting ? "-testing" : ""}.md`);
           let originalMd = "# 发版记录\n\n";
           if (existsSync(releaseMdPath)) {
             originalMd = readFileSync(releaseMdPath, "utf8");
           }
 
-          terminal.sendText(`npm version ${version}`);
+          terminal.sendText(`npm version ${version} --allow-same-version`);
           terminal.show();
 
           showInformationMessage("正在发版编译...", {
@@ -95,20 +103,13 @@ export function activate(context: vscode.ExtensionContext) {
 
           const newMd = writeReleaseMD(originalMd, version, records);
 
-          writeFileSync(join(rootPath, "release.md"), html2md(newMd));
+          writeFileSync(join(rootPath, `release${isTesting ? "-testing" : ""}.md`), html2md(newMd) + "\n");
 
           const releaseType = message?.isRelease ?? "no";
 
-          let releaseScript = /(\-testing)$/.test(version)
-            ? "npm run testing"
-            : `${message?.scriptText}`;
-
           const cli: string = (allConfig.get("cli") as any)?.[releaseType];
           const dist: string = (allConfig.get(`dist.${releaseType}`) as any)?.[
-            /(\-testing)$/.test(version) ||
-            releaseScript.includes("npm run testing")
-              ? "testing"
-              : "production"
+            isTesting ? "testing" : "production"
           ];
 
           if (cli && dist) {
@@ -160,10 +161,10 @@ function writeReleaseMD(
     1,
     0,
     `<h2>v${version}</h2>\n`,
-    `<p><strong>发版时间：${dateFormat(
+    `<p><strong> 发版时间：${dateFormat(
       Date.now(),
       "yyyy-MM-dd hh:mm:ss",
-    )}</strong></p>`,
+    )} </strong></p>`,
     ...listStr.split("\n"),
   );
 
