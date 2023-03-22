@@ -130,7 +130,7 @@ export function activate(context: vscode.ExtensionContext) {
               },
             );
             if (stdout) {
-              writeEmitter.fire(`Version: ${formatText(stdout)}`);
+              writeEmitter.fire(formatText(`Version: ${stdout}`));
             }
             if (stderr && stderr.length) {
               writeEmitter.fire(`\x1b[31m${formatText(stderr)}\x1b[0m\r\n`);
