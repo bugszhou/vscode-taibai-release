@@ -26,21 +26,6 @@ const {
 
 let terminal: ReturnType<typeof createTerminal> = null as any;
 
-vscode.window.onDidCloseTerminal((e) => {
-  if (e?.name === "release" && e?.exitStatus?.code === 0) {
-    showInformationMessage("发版编译结束", {
-      modal: true,
-    });
-  }
-});
-vscode.window.onDidChangeTerminalState((e) => {
-  console.log("onDidChangeTerminalState: ", e);
-});
-
-vscode.window.onDidChangeActiveTerminal((e) => {
-  console.log("onDidChangeActiveTerminal: ", e);
-});
-
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
@@ -250,6 +235,9 @@ export function activate(context: vscode.ExtensionContext) {
                       writeEmitter.fire(
                         formatText(`\r\n上传版本号：${version}\r\n`),
                       );
+                      showInformationMessage("发版编译结束", {
+                        modal: true,
+                      });
                       writeEmitter.fire(
                         formatText(`\x1b[31m\r\n输入 【回车键】 退出！\x1b[0m\r\n`),
                       );
