@@ -1,21 +1,27 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import { existsSync, readFileSync, writeFileSync } from "fs";
+import { exec as cpExec } from "child_process";
 import { join } from "path";
 import * as vscode from "vscode";
 import { getHtml } from "./html";
 import * as MarkdownIt from "markdown-it";
 import * as html2mdDefault from "html-to-md";
+import * as spawn from "cross-spawn";
 import sleep from "./sleep";
+import { promisify } from "util";
+
+const exec = promisify(cpExec);
 
 const html2md: any = html2mdDefault;
+
+const formatText = (text: string) => `\r${text.split(/(\r?\n)/g).join("\r")}\r`;
 
 const {
   showInformationMessage,
   showErrorMessage,
   createWebviewPanel,
   createTerminal,
-  withProgress,
 } = vscode.window;
 
 let terminal: ReturnType<typeof createTerminal> = null as any;
@@ -27,6 +33,13 @@ vscode.window.onDidCloseTerminal((e) => {
     });
   }
 });
+vscode.window.onDidChangeTerminalState((e) => {
+  console.log("onDidChangeTerminalState: ", e);
+});
+
+vscode.window.onDidChangeActiveTerminal((e) => {
+  console.log("onDidChangeActiveTerminal: ", e);
+});
 
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
@@ -34,6 +47,16 @@ export function activate(context: vscode.ExtensionContext) {
   let disposable = vscode.commands.registerCommand(
     "extension.release",
     async () => {
+      const workspaceRoots: readonly vscode.WorkspaceFolder[] | undefined =
+        vscode.workspace.workspaceFolders;
+      if (!workspaceRoots || !workspaceRoots.length) {
+        // no workspace root
+        return "";
+      }
+      const workspaceRoot: string = workspaceRoots[0].uri.fsPath || "";
+
+      const writeEmitter = new vscode.EventEmitter<string>();
+
       const allConfig = vscode.workspace.getConfiguration("taibai-release");
 
       const releaseView = createWebviewPanel(
@@ -65,7 +88,22 @@ export function activate(context: vscode.ExtensionContext) {
           }
 
           if (!terminal || terminal?.exitStatus) {
-            terminal = createTerminal("release");
+            terminal = createTerminal({
+              name: "release",
+              pty: {
+                handleInput(data: string) {
+                  if (data === "\r" || data === "\r\n") {
+                    terminal.dispose();
+                  }
+                },
+                onDidWrite: writeEmitter.event,
+                open() {
+                  writeEmitter.fire("\r\n正在发版编译...\r\n\r\n");
+                  return;
+                },
+                close() {},
+              },
+            });
           }
 
           let records: string[] = (message?.records ?? "")
@@ -78,55 +116,167 @@ export function activate(context: vscode.ExtensionContext) {
             .replace("\r\n", "\n")
             .replace("\n\r", "\n");
 
-            let releaseScript = /(\-testing)$/.test(version)
-              ? "npm run testing"
-              : `${message?.scriptText}`;
-  
-            const isTesting =
-              /(\-testing)$/.test(version) ||
-              releaseScript.includes("npm run testing");
+          let releaseScript = /(\-testing)$/.test(version)
+            ? "npm run testing"
+            : `${message?.scriptText}`;
 
-          const releaseMdPath = join(rootPath, `release${isTesting ? "-testing" : ""}.md`);
+          const isTesting =
+            /(\-testing)$/.test(version) ||
+            releaseScript.includes("npm run testing");
+
+          const releaseMdPath = join(
+            rootPath,
+            `release${isTesting ? "-testing" : ""}.md`,
+          );
           let originalMd = "# 发版记录\n\n";
           if (existsSync(releaseMdPath)) {
             originalMd = readFileSync(releaseMdPath, "utf8");
           }
 
-          terminal.sendText(`npm version ${version} --allow-same-version`);
+          releaseView.dispose();
           terminal.show();
+
+          try {
+            const { stdout, stderr } = await exec(
+              `npm version ${version} --allow-same-version`,
+              {
+                encoding: "utf8",
+                cwd: workspaceRoot,
+              },
+            );
+            if (stdout) {
+              writeEmitter.fire(`Version: ${formatText(stdout)}`);
+            }
+            if (stderr && stderr.length) {
+              writeEmitter.fire(`\x1b[31m${formatText(stderr)}\x1b[0m\r\n`);
+            }
+          } catch (e: any) {
+            writeEmitter.fire(`\x1b[31m${formatText(e.toString())}\x1b[0m\r\n`);
+          }
 
           showInformationMessage("正在发版编译...", {
             modal: true,
           });
 
-          await sleep(2000);
-
           const newMd = writeReleaseMD(originalMd, version, records);
 
-          writeFileSync(join(rootPath, `release${isTesting ? "-testing" : ""}.md`), html2md(newMd) + "\n");
+          writeFileSync(
+            join(rootPath, `release${isTesting ? "-testing" : ""}.md`),
+            html2md(newMd) + "\n",
+          );
 
           const releaseType = message?.isRelease ?? "no";
 
-          const cli: string = (allConfig.get("cli") as any)?.[releaseType];
-          const dist: string = (allConfig.get(`dist.${releaseType}`) as any)?.[
-            isTesting ? "testing" : "production"
-          ];
+          writeEmitter.fire(formatText(`\r\n编译指令为：${releaseScript}\r\n`));
+          writeEmitter.fire(formatText(`\r\n代码编译中...\r\n`));
 
-          if (cli && dist) {
-            releaseScript = `${releaseScript} && ${cli} upload --project ${join(
-              rootPath,
-              dist,
-            )} --version ${version.replace(
-              "-testing",
-              "",
-            )} --desc \"${records.join("\n")}\"`;
+          try {
+            const buildProcess = cpExec(releaseScript, {
+              encoding: "utf8",
+              cwd: workspaceRoot,
+            });
+
+            buildProcess?.stdout?.on("data", (data) => {
+              writeEmitter.fire(formatText(data));
+            });
+
+            buildProcess?.stderr?.on("data", (data) => {
+              if (
+                data?.includes("webpack.Progress") ||
+                data?.includes("building")
+              ) {
+                return;
+              }
+              writeEmitter.fire(
+                `\x1b[31m${formatText(
+                  "........编译出错: 错误信息如下：......",
+                )}\x1b[0m\r\n`,
+              );
+              writeEmitter.fire(`\x1b[31m${formatText(data)}\x1b[0m\r\n`);
+            });
+
+            const cli: string = (allConfig.get("cli") as any)?.[releaseType];
+            const dist: string = (
+              allConfig.get(`dist.${releaseType}`) as any
+            )?.[isTesting ? "testing" : "production"];
+
+            buildProcess.on("exit", (exitCode) => {
+              if (exitCode === 0) {
+                writeEmitter.fire(formatText(`\r\n编译成功！\r\n`));
+                writeEmitter.fire(
+                  formatText(
+                    `\r\n编译后的代码路径：${join(rootPath, dist)}\r\n`,
+                  ),
+                );
+
+                if (!cli || !dist) {
+                  writeEmitter.fire(`\x1b[31m代码上传配置有误！\x1b[0m\r\n`);
+                  return;
+                }
+
+                releaseScript = `${cli} upload --project ${join(
+                  rootPath,
+                  dist,
+                )} --version ${version.replace(
+                  "-testing",
+                  "",
+                )} --desc \"${records.join("\n")}\"`;
+
+                writeEmitter.fire(formatText(`\r\n代码上传中...\r\n`));
+                writeEmitter.fire(
+                  formatText(`\r\n上传指令为：${releaseScript}\r\n`),
+                );
+
+                try {
+                  const uploadProcess = cpExec(releaseScript, {
+                    encoding: "utf8",
+                    cwd: workspaceRoot,
+                  });
+
+                  writeEmitter.fire(
+                    `${formatText("........上传信息如下：......")}\r\n\r\n`,
+                  );
+                  uploadProcess?.stdout?.on("data", (data) => {
+                    writeEmitter.fire(formatText(data));
+                  });
+
+                  uploadProcess?.stderr?.on("data", (data) => {
+                    writeEmitter.fire(`${formatText(data)}\r\n`);
+                  });
+
+                  uploadProcess.on("exit", (exitCode) => {
+                    if (exitCode === 0) {
+                      writeEmitter.fire(formatText(`\r\n上传成功！\r\n`));
+                      writeEmitter.fire(
+                        formatText(`\r\n上传版本号：${version}\r\n`),
+                      );
+                      writeEmitter.fire(
+                        formatText(`\x1b[31m\r\n输入 【回车键】 退出！\x1b[0m\r\n`),
+                      );
+                      return;
+                    }
+                    writeEmitter.fire(
+                      `\x1b[31m${formatText(
+                        `........上传出错: 错误码是：${exitCode}......`,
+                      )}\x1b[0m\r\n`,
+                    );
+                  });
+                } catch (e: any) {
+                  writeEmitter.fire(
+                    `\x1b[31m${formatText(e.toString())}\x1b[0m\r\n`,
+                  );
+                }
+                return;
+              }
+              writeEmitter.fire(
+                `\x1b[31m${formatText(
+                  `........编译出错: 错误码是：${exitCode}......`,
+                )}\x1b[0m\r\n`,
+              );
+            });
+          } catch (e: any) {
+            writeEmitter.fire(`\x1b[31m${formatText(e.toString())}\x1b[0m\r\n`);
           }
-          console.log(releaseScript);
-
-          releaseScript = `${releaseScript} && exit 0`;
-
-          terminal.sendText(releaseScript);
-          releaseView.dispose();
         },
         undefined,
         context.subscriptions,
