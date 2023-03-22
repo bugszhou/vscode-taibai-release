@@ -174,7 +174,7 @@ export function activate(context: vscode.ExtensionContext) {
               }
               writeEmitter.fire(
                 `\x1b[31m${formatText(
-                  "........编译出错: 错误信息如下：......",
+                  "........编译信息如下：......",
                 )}\x1b[0m\r\n`,
               );
               writeEmitter.fire(`\x1b[31m${formatText(data)}\x1b[0m\r\n`);
