@@ -1,0 +1,48 @@
+{
+  "varData": {
+    "cli": "/Applications/wechatwebdevtools.app/Contents/MacOS/cli",
+    "summary": ""
+  },
+  "tasks": [
+    {
+      "title": "测试环境",
+      "varData": {
+        "dir": "${root}/dist/testing/weapp"
+      },
+      "tasks": [
+        {
+          "title": "设置版本号",
+          "cmd": "npm version ${varData.version} --allow-same-version"
+        },
+        {
+          "title": "编译代码",
+          "cmd": "npm run testing"
+        },
+        {
+          "title": "上传项目",
+          "cmd": "${varData.cli} upload --project ${varData.dir} --version ${varData.version} --desc ${varData.summary}"
+        }
+      ]
+    },
+    {
+      "title": "生产环境",
+      "varData": {
+        "dir": "${root}/dist/release/weapp"
+      },
+      "tasks": [
+        {
+          "title": "设置版本号",
+          "cmd": "npm version ${varData.version} --allow-same-version"
+        },
+        {
+          "title": "编译代码",
+          "cmd": "npm run build"
+        },
+        {
+          "title": "上传项目",
+          "cmd": "${varData.cli} upload --project ${varData.dir} --version ${varData.version} --desc ${varData.summary}"
+        }
+      ]
+    }
+  ]
+}

@@ -1,4 +1,15 @@
-export function getHtml(version = "") {
+interface IParams {
+  version: string;
+  config: any;
+}
+
+export function getHtml(params: IParams) {
+  const options =
+    params?.config?.tasks
+      ?.map?.(
+        (item: any) => `<option value="${item?.title}">${item?.title}</option>`,
+      )
+      .join("\n") ?? "";
   return `<!DOCTYPE html>
   <html>
     <head>
@@ -79,13 +90,18 @@ export function getHtml(version = "") {
         .release__radio-input {
           margin-right: 4px;
         }
+
+        .release__select {
+          min-width: 350px;
+          height: 50px;
+        }
       </style>
     </head>
     <body>
       <div class="release">
         <div class="release__item">
           <div class="release__title">当前版本号：</div>
-          <span class="release__current">${version}</span>
+          <span class="release__current">${params?.version}</span>
         </div>
         <div class="release__item">
           <div class="release__title">即将发布版本号：</div>
@@ -95,7 +111,14 @@ export function getHtml(version = "") {
           <div class="release__title">发版说明：</div>
           <textarea id="release__text-js" class="release__text" oninput="handleRecordInfo()"></textarea>
         </div>
-        <div class="release__item release__radios">
+        <div class="release__item">
+          <div class="release__title">执行模式：</div>
+          <select class="release__select" id="release__select-js" onchange="handleTaskSelect()">
+            <option value="">未选择</option>
+            ${options ?? ""}
+          </select>
+        </div>
+        <!-- <div class="release__item release__radios">
           <div class="release__radio">
             <input class="release__radio-ipt" name="scriptText" onchange="handleRadioChange()" type="radio" value="npm run testing" checked />测试环境
           </div>
@@ -114,7 +137,7 @@ export function getHtml(version = "") {
           <div class="release__radio">
             <input class="release__radio-input release__is-release" name="isRelease" onchange="handleIsReleaseChange()" type="radio" value="no" />不上传
           </div>
-        </div>
+        </div> -->
         <div class="release__footer">
           <button class="release__btn" onclick="handleRelease()">发 版</button>
         </div>
@@ -124,6 +147,7 @@ export function getHtml(version = "") {
       const vscode = acquireVsCodeApi();
       let records = "";
       let scriptText = "npm run testing";
+      let configItem = "";
       function handleRecordInfo() {
         const dom = document.querySelector("#release__text-js");
         records = dom.value;
@@ -154,6 +178,17 @@ export function getHtml(version = "") {
           }
         });
       }
+
+      function handleTaskSelect() {
+        const dom = document.querySelector("#release__select-js");
+        let option = {};
+        for (let index in dom.options) {
+          if (dom.options[index].selected) {
+            option = dom.options[index];
+          }
+        }
+        configItem = option.value || "";
+      }
   
       function handleRelease() {
         if (!version) {
@@ -164,6 +199,19 @@ export function getHtml(version = "") {
             records,
             scriptText,
             isRelease,
+            configItem,
+          });
+          return;
+        }
+        if (!configItem) {
+          vscode.postMessage({
+            status: "fail",
+            msg: "请选择执行模式",
+            version,
+            records,
+            scriptText,
+            isRelease,
+            configItem,
           });
           return;
         }
@@ -174,6 +222,7 @@ export function getHtml(version = "") {
           records,
           scriptText,
           isRelease,
+          configItem,
         });
       }
     </script>

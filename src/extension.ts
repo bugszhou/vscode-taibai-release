@@ -7,9 +7,10 @@ import * as vscode from "vscode";
 import { getHtml } from "./html";
 import * as MarkdownIt from "markdown-it";
 import * as html2mdDefault from "html-to-md";
-import * as spawn from "cross-spawn";
-import sleep from "./sleep";
 import { promisify } from "util";
+import { ITask } from "./__interface__";
+import sleep from "./sleep";
+import { merge } from "lodash";
 
 const exec = promisify(cpExec);
 
@@ -62,7 +63,15 @@ export function activate(context: vscode.ExtensionContext) {
         ? JSON.parse(readFileSync(packageJSONPath, "utf8"))
         : {};
 
-      releaseView.webview.html = getHtml(packageJSON?.version);
+      const configPathUrl = join(rootPath, "./.vscode/taibai-release.json");
+      const releaseConfig = existsSync(configPathUrl)
+        ? JSON.parse(readFileSync(configPathUrl, "utf8"))
+        : {};
+
+      releaseView.webview.html = getHtml({
+        version: packageJSON?.version,
+        config: releaseConfig,
+      });
 
       releaseView.webview.onDidReceiveMessage(
         async (message) => {
@@ -91,6 +100,10 @@ export function activate(context: vscode.ExtensionContext) {
             });
           }
 
+          showInformationMessage("正在发版编译...", {
+            modal: true,
+          });
+
           let records: string[] = (message?.records ?? "")
             .replace("\r\n", "\n")
             .replace("\n\r", "\n")
@@ -101,13 +114,17 @@ export function activate(context: vscode.ExtensionContext) {
             .replace("\r\n", "\n")
             .replace("\n\r", "\n");
 
-          let releaseScript = /(\-testing)$/.test(version)
-            ? "npm run testing"
-            : `${message?.scriptText}`;
+          const taskConfig = getTask(message?.configItem, releaseConfig);
+          taskConfig.varData.version = version;
+          taskConfig.varData.summary = `\"${records?.join("\r\n") ?? ""}\"`;
+          terminal.show();
 
-          const isTesting =
-            /(\-testing)$/.test(version) ||
-            releaseScript.includes("npm run testing");
+          await rumCmd({
+            writeEmitter,
+            task: taskConfig,
+          });
+
+          const isTesting = /(\-testing)$/.test(version);
 
           const releaseMdPath = join(
             rootPath,
@@ -118,31 +135,6 @@ export function activate(context: vscode.ExtensionContext) {
             originalMd = readFileSync(releaseMdPath, "utf8");
           }
 
-          releaseView.dispose();
-          terminal.show();
-
-          try {
-            const { stdout, stderr } = await exec(
-              `npm version ${version} --allow-same-version`,
-              {
-                encoding: "utf8",
-                cwd: workspaceRoot,
-              },
-            );
-            if (stdout) {
-              writeEmitter.fire(formatText(`Version: ${stdout}`));
-            }
-            if (stderr && stderr.length) {
-              writeEmitter.fire(`\x1b[31m${formatText(stderr)}\x1b[0m\r\n`);
-            }
-          } catch (e: any) {
-            writeEmitter.fire(`\x1b[31m${formatText(e.toString())}\x1b[0m\r\n`);
-          }
-
-          showInformationMessage("正在发版编译...", {
-            modal: true,
-          });
-
           const newMd = writeReleaseMD(originalMd, version, records);
 
           writeFileSync(
@@ -150,121 +142,7 @@ export function activate(context: vscode.ExtensionContext) {
             html2md(newMd) + "\n",
           );
 
-          const releaseType = message?.isRelease ?? "no";
-
-          writeEmitter.fire(formatText(`\r\n编译指令为：${releaseScript}\r\n`));
-          writeEmitter.fire(formatText(`\r\n代码编译中...\r\n`));
-
-          try {
-            const buildProcess = cpExec(releaseScript, {
-              encoding: "utf8",
-              cwd: workspaceRoot,
-            });
-
-            buildProcess?.stdout?.on("data", (data) => {
-              writeEmitter.fire(formatText(data));
-            });
-
-            buildProcess?.stderr?.on("data", (data) => {
-              if (
-                data?.includes("webpack.Progress") ||
-                data?.includes("building")
-              ) {
-                return;
-              }
-              writeEmitter.fire(
-                `\x1b[31m${formatText(
-                  "........编译信息如下：......",
-                )}\x1b[0m\r\n`,
-              );
-              writeEmitter.fire(`\x1b[31m${formatText(data)}\x1b[0m\r\n`);
-            });
-
-            const cli: string = (allConfig.get("cli") as any)?.[releaseType];
-            const dist: string = (
-              allConfig.get(`dist.${releaseType}`) as any
-            )?.[isTesting ? "testing" : "production"];
-
-            buildProcess.on("exit", (exitCode) => {
-              if (exitCode === 0) {
-                writeEmitter.fire(formatText(`\r\n编译成功！\r\n`));
-                writeEmitter.fire(
-                  formatText(
-                    `\r\n编译后的代码路径：${join(rootPath, dist)}\r\n`,
-                  ),
-                );
-
-                if (!cli || !dist) {
-                  writeEmitter.fire(`\x1b[31m代码上传配置有误！\x1b[0m\r\n`);
-                  return;
-                }
-
-                releaseScript = `${cli} upload --project ${join(
-                  rootPath,
-                  dist,
-                )} --version ${version.replace(
-                  "-testing",
-                  "",
-                )} --desc \"${records.join("\n")}\"`;
-
-                writeEmitter.fire(formatText(`\r\n代码上传中...\r\n`));
-                writeEmitter.fire(
-                  formatText(`\r\n上传指令为：${releaseScript}\r\n`),
-                );
-
-                try {
-                  const uploadProcess = cpExec(releaseScript, {
-                    encoding: "utf8",
-                    cwd: workspaceRoot,
-                  });
-
-                  writeEmitter.fire(
-                    `${formatText("........上传信息如下：......")}\r\n\r\n`,
-                  );
-                  uploadProcess?.stdout?.on("data", (data) => {
-                    writeEmitter.fire(formatText(data));
-                  });
-
-                  uploadProcess?.stderr?.on("data", (data) => {
-                    writeEmitter.fire(`${formatText(data)}\r\n`);
-                  });
-
-                  uploadProcess.on("exit", (exitCode) => {
-                    if (exitCode === 0) {
-                      writeEmitter.fire(formatText(`\r\n上传成功！\r\n`));
-                      writeEmitter.fire(
-                        formatText(`\r\n上传版本号：${version}\r\n`),
-                      );
-                      showInformationMessage("发版编译结束", {
-                        modal: true,
-                      });
-                      writeEmitter.fire(
-                        formatText(`\x1b[31m\r\n输入 【回车键】 退出！\x1b[0m\r\n`),
-                      );
-                      return;
-                    }
-                    writeEmitter.fire(
-                      `\x1b[31m${formatText(
-                        `........上传出错: 错误码是：${exitCode}......`,
-                      )}\x1b[0m\r\n`,
-                    );
-                  });
-                } catch (e: any) {
-                  writeEmitter.fire(
-                    `\x1b[31m${formatText(e.toString())}\x1b[0m\r\n`,
-                  );
-                }
-                return;
-              }
-              writeEmitter.fire(
-                `\x1b[31m${formatText(
-                  `........编译出错: 错误码是：${exitCode}......`,
-                )}\x1b[0m\r\n`,
-              );
-            });
-          } catch (e: any) {
-            writeEmitter.fire(`\x1b[31m${formatText(e.toString())}\x1b[0m\r\n`);
-          }
+          releaseView.dispose();
         },
         undefined,
         context.subscriptions,
@@ -277,6 +155,140 @@ export function activate(context: vscode.ExtensionContext) {
 
 // this method is called when your extension is deactivated
 export function deactivate() {}
+
+interface IRunCmdParams {
+  writeEmitter: vscode.EventEmitter<string>;
+  task: ITask;
+}
+
+async function rumCmd({ writeEmitter, task }: IRunCmdParams) {
+  const workspaceRoots: readonly vscode.WorkspaceFolder[] | undefined =
+    vscode.workspace.workspaceFolders;
+  if (!workspaceRoots || !workspaceRoots.length) {
+    // no workspace root
+    return;
+  }
+
+  const workspaceRoot: string = workspaceRoots[0].uri.fsPath || "";
+  let index = 0;
+
+  await sleep(500);
+
+  try {
+    writeEmitter.fire(
+      `\r\n${formatText(` 当前操作系统：${process.platform} `)}\r\n`,
+    );
+
+    writeEmitter.fire(`\r\n${formatText(` 当前运行模式：${task.title} `)}\r\n`);
+
+    return innerRunCmd(task.tasks, index);
+
+    async function innerRunCmd(tasks: ITask["tasks"], index: number) {
+      return new Promise(async (resolve, reject) => {
+        const currentTask = tasks?.[index];
+        if (!currentTask) {
+          showInformationMessage("发版编译结束", {
+            modal: true,
+          });
+          writeEmitter.fire(
+            formatText(`\x1b[31m\r\n输入 【回车键】 退出！\x1b[0m\r\n`),
+          );
+          resolve(null);
+          return;
+        }
+        const varData = task.varData;
+        const cmdStr: string = Function(`return function (currentTask) {
+          return currentTask.cmd;
+        }`)()(currentTask);
+        const cmd: string = eval(`\`${cmdStr}\``)?.replace(
+          /\$\{root\}/g,
+          workspaceRoot,
+        );
+
+        writeEmitter.fire(
+          `\r\n${formatText(
+            `........ 当前执行任务：${currentTask.title} ......`,
+          )}\r\n`,
+        );
+        writeEmitter.fire(
+          `\r\n${formatText(` 当前执行指令：${cmd} `)}\r\n\r\n`,
+        );
+
+        await sleep(500);
+
+        writeEmitter.fire(
+          `\r\n${formatText("........ 执行信息如下： ......")}\r\n`,
+        );
+
+        const buildProcess = cpExec(cmd, {
+          encoding: "utf8",
+          cwd: workspaceRoot,
+        });
+
+        buildProcess?.stdout?.on("data", (data) => {
+          if (data?.includes("[error]")) {
+            writeEmitter.fire(`\r\n\x1b[31m${formatText(data)}\x1b[0m\r\n`);
+            writeEmitter.fire(
+              `\x1b[31m${formatText(
+                `........ 执行任务失败 ......`,
+              )}\x1b[0m\r\n`,
+            );
+            buildProcess.kill(-1);
+            return;
+          }
+
+          writeEmitter.fire(formatText(data));
+        });
+
+        buildProcess?.stderr?.on("data", (data) => {
+          if (
+            data?.includes("webpack.Progress") ||
+            data?.includes("building")
+          ) {
+            return;
+          }
+
+          if (data?.includes("[error]")) {
+            writeEmitter.fire(`\r\n\x1b[31m${formatText(data)}\x1b[0m\r\n`);
+            writeEmitter.fire(
+              `\x1b[31m${formatText(
+                `........ 执行任务失败 ......`,
+              )}\x1b[0m\r\n`,
+            );
+            buildProcess.kill(-1);
+            return;
+          }
+
+          writeEmitter.fire(`\r\n${formatText(data)}\r\n`);
+        });
+
+        buildProcess.on("exit", (exitCode) => {
+          if (exitCode === 0) {
+            writeEmitter.fire(
+              formatText(`\r\n执行【${currentTask.title}】成功！\r\n`),
+            );
+            innerRunCmd(task.tasks, ++index);
+            return;
+          }
+          reject();
+          writeEmitter.fire(
+            `\x1b[31m${formatText(
+              `........ 执行任务失败: 错误码是：${exitCode} ......`,
+            )}\x1b[0m\r\n`,
+          );
+          writeEmitter.fire(
+            formatText(`\x1b[31m\r\n输入 【回车键】 退出！\x1b[0m\r\n`),
+          );
+          showInformationMessage("执行失败", {
+            modal: true,
+          });
+        });
+      });
+    }
+  } catch (e: any) {
+    writeEmitter.fire(`\x1b[31m${formatText(e.toString())}\x1b[0m\r\n`);
+  }
+}
 
 function writeReleaseMD(
   originalMd: string,
@@ -350,4 +362,16 @@ function dateFormat(millisecond: number, fmt: string): string {
   });
 
   return str;
+}
+
+function getTask(title: string, config: any) {
+  const task = config?.tasks?.filter((item: any) => item.title === title)[0];
+  const commonVar = config?.varData ?? {};
+  const itemVar = task?.varData ?? {};
+  const varData = merge(commonVar, itemVar);
+  const allConfig = vscode.workspace.getConfiguration("taibai-release");
+  return {
+    ...(task || {}),
+    varData,
+  };
 }
