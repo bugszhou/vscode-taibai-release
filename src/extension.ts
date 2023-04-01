@@ -37,13 +37,10 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.workspace.workspaceFolders;
       if (!workspaceRoots || !workspaceRoots.length) {
         // no workspace root
-        return "";
+        return;
       }
-      const workspaceRoot: string = workspaceRoots[0].uri.fsPath || "";
 
       const writeEmitter = new vscode.EventEmitter<string>();
-
-      const allConfig = vscode.workspace.getConfiguration("taibai-release");
 
       const releaseView = createWebviewPanel(
         "release",
@@ -117,6 +114,8 @@ export function activate(context: vscode.ExtensionContext) {
           const taskConfig = getTask(message?.configItem, releaseConfig);
           taskConfig.varData.version = version;
           taskConfig.varData.summary = `\"${records?.join("\r\n") ?? ""}\"`;
+
+          releaseView.dispose();
           terminal.show();
 
           await rumCmd({
@@ -141,8 +140,6 @@ export function activate(context: vscode.ExtensionContext) {
             join(rootPath, `release${isTesting ? "-testing" : ""}.md`),
             html2md(newMd) + "\n",
           );
-
-          releaseView.dispose();
         },
         undefined,
         context.subscriptions,
@@ -180,6 +177,8 @@ async function rumCmd({ writeEmitter, task }: IRunCmdParams) {
     );
 
     writeEmitter.fire(`\r\n${formatText(` 当前运行模式：${task.title} `)}\r\n`);
+
+    writeEmitter.fire(`\r\n描述信息：\r\n\r\n${task.varData.summary || ""}\r\n\r\n`);
 
     return innerRunCmd(task.tasks, index);
 
@@ -262,12 +261,13 @@ async function rumCmd({ writeEmitter, task }: IRunCmdParams) {
           writeEmitter.fire(`\r\n${formatText(data)}\r\n`);
         });
 
-        buildProcess.on("exit", (exitCode) => {
+        buildProcess.on("exit", async (exitCode) => {
           if (exitCode === 0) {
             writeEmitter.fire(
               formatText(`\r\n执行【${currentTask.title}】成功！\r\n`),
             );
-            innerRunCmd(task.tasks, ++index);
+            await innerRunCmd(task.tasks, ++index);
+            resolve(null);
             return;
           }
           reject();
