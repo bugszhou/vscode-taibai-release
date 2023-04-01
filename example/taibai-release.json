@@ -2,7 +2,8 @@
   "varData": {
     "cli": "/Applications/wechatwebdevtools.app/Contents/MacOS/cli",
     "summary": "",
-    "dir": ""
+    "dir": "",
+    "version": ""
   },
   "tasks": [
     {
