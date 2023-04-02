@@ -196,6 +196,10 @@ async function rumCmd({ writeEmitter, task }: IRunCmdParams) {
           return;
         }
         const varData = task.varData;
+        currentTask.cmd = currentTask.cmd?.replace(
+          /\$\{root\}/g,
+          workspaceRoot,
+        );
         const cmdStr: string = Function(`return function (currentTask) {
           return currentTask.cmd;
         }`)()(currentTask);
