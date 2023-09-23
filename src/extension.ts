@@ -1,7 +1,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import { existsSync, readFileSync, writeFileSync } from "fs";
-import { exec as cpExec } from "child_process";
+import { ChildProcess, exec as cpExec, fork } from "child_process";
 import { join } from "path";
 import * as vscode from "vscode";
 import { getHtml } from "./html";
@@ -178,12 +178,14 @@ async function rumCmd({ writeEmitter, task }: IRunCmdParams) {
 
     writeEmitter.fire(`\r\n${formatText(` 当前运行模式：${task.title} `)}\r\n`);
 
-    writeEmitter.fire(`\r\n描述信息：\r\n\r\n${task.varData.summary || ""}\r\n\r\n`);
+    writeEmitter.fire(
+      `\r\n描述信息：\r\n\r\n${task.varData.summary || ""}\r\n\r\n`,
+    );
 
     return innerRunCmd(task.tasks, index);
 
     async function innerRunCmd(tasks: ITask["tasks"], index: number) {
-      return new Promise(async (resolve, reject) => {
+      async function _runCmd(resolve: any, reject: any) {
         const currentTask = tasks?.[index];
         if (!currentTask) {
           showInformationMessage("发版编译结束", {
@@ -223,10 +225,42 @@ async function rumCmd({ writeEmitter, task }: IRunCmdParams) {
           `\r\n${formatText("........ 执行信息如下： ......")}\r\n`,
         );
 
-        const buildProcess = cpExec(cmd, {
-          encoding: "utf8",
-          cwd: workspaceRoot,
-        });
+        let buildProcess: ChildProcess = Object.create(null);
+
+        if (cmd?.startsWith("node:")) {
+          buildProcess = fork(cmd?.replace("node:", ""), {
+            cwd: workspaceRoot,
+            env: varData,
+          });
+          buildProcess.on("message", (msg) => {
+            try {
+              const data = JSON.parse(msg.toString());
+              if (data?.type === "msg") {
+                writeEmitter.fire(
+                  `\r\n[31m${formatText(data?.msg ?? "")}\r\n`,
+                );
+              }
+
+              if (data?.type === "data") {
+                Object.keys(varData ?? {}).forEach((key) => {
+                  varData[key as keyof typeof varData] =
+                    (data?.data?.[key] as any) ??
+                    varData[key as keyof typeof varData];
+                });
+              }
+            } catch {
+              writeEmitter.fire(
+                `\r\n\x1b[31m${formatText(msg.toString())}\x1b[0m\r\n`,
+              );
+            }
+          });
+        } else {
+          buildProcess = cpExec(cmd, {
+            encoding: "utf8",
+            cwd: workspaceRoot,
+            env: varData,
+          });
+        }
 
         buildProcess?.stdout?.on("data", (data) => {
           if (data?.includes("[error]")) {
@@ -287,6 +321,10 @@ async function rumCmd({ writeEmitter, task }: IRunCmdParams) {
             modal: true,
           });
         });
+      }
+
+      return new Promise((resolve, reject) => {
+        _runCmd(resolve, reject);
       });
     }
   } catch (e: any) {
