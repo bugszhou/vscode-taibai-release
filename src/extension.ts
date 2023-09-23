@@ -258,7 +258,6 @@ async function rumCmd({ writeEmitter, task }: IRunCmdParams) {
           buildProcess = cpExec(cmd, {
             encoding: "utf8",
             cwd: workspaceRoot,
-            env: varData,
           });
         }
 
