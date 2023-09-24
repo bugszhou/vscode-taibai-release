@@ -33,6 +33,7 @@ export function activate(context: vscode.ExtensionContext) {
   let disposable = vscode.commands.registerCommand(
     "extension.release",
     async () => {
+      terminal?.dispose?.();
       const workspaceRoots: readonly vscode.WorkspaceFolder[] | undefined =
         vscode.workspace.workspaceFolders;
       if (!workspaceRoots || !workspaceRoots.length) {
@@ -230,15 +231,16 @@ async function rumCmd({ writeEmitter, task }: IRunCmdParams) {
         if (cmd?.startsWith("node:")) {
           buildProcess = fork(cmd?.replace("node:", ""), {
             cwd: workspaceRoot,
-            env: varData,
+            env: {
+              ...varData,
+              ...process.env,
+            },
           });
           buildProcess.on("message", (msg) => {
             try {
               const data = JSON.parse(msg.toString());
               if (data?.type === "msg") {
-                writeEmitter.fire(
-                  `\r\n[31m${formatText(data?.msg ?? "")}\r\n`,
-                );
+                writeEmitter.fire(`\r\n${formatText(data?.msg ?? "")}\r\n`);
               }
 
               if (data?.type === "data") {
@@ -247,6 +249,10 @@ async function rumCmd({ writeEmitter, task }: IRunCmdParams) {
                     (data?.data?.[key] as any) ??
                     varData[key as keyof typeof varData];
                 });
+
+                if (data?.msg) {
+                  writeEmitter.fire(`\r\n${formatText(data?.msg ?? "")}\r\n`);
+                }
               }
             } catch {
               writeEmitter.fire(

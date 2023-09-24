@@ -33,6 +33,12 @@
         }
       ]
     },
+    "keybindings": [
+      {
+        "command": "extension.release",
+        "key": "ctrl+alt+p"
+      }
+    ],
     "configuration": {
       "type": "object",
       "title": "发版配置",
